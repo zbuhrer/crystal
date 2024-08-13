@@ -1,0 +1,4 @@
+*venv
+*.proto
+*.DS_*
+__pycache__
