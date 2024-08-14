@@ -1,13 +1,15 @@
 from flask import Flask, request, jsonify
 import grpc
 
-# gRPC protobuffs are imported this way to avoid circular imports I think 
+# Import gRPC stubs
 import voice_processor_pb2 as vp_pb2
 import voice_processor_pb2_grpc as vp_pb2_grpc
-
+import note_manager_pb2 as nm_pb2
+import note_manager_pb2_grpc as nm_pb2_grpc
+import model_orchestrator_pb2 as mo_pb2
+import model_orchestrator_pb2_grpc as mo_pb2_grpc
 
 # gRPC clients
-
 class VoiceProcessorClient:
     def __init__(self):
         self.channel = grpc.insecure_channel('localhost:50051')
@@ -23,67 +25,95 @@ class VoiceProcessorClient:
         response = self.stub.SynthesizeSpeech(request)
         return response.audio
 
-# ---
-
 class NoteManagerClient:
     def __init__(self):
         self.channel = grpc.insecure_channel('localhost:50052')
+        self.stub = nm_pb2_grpc.NoteManagerStub(self.channel)
 
     def create_note(self, content: str) -> str:
-        # Placeholder for gRPC call
-        return "Note created"
+        request = nm_pb2.CreateNoteRequest(content=content)
+        response = self.stub.CreateNote(request)
+        return response.note_id
 
     def update_note(self, note_id: str, content: str) -> bool:
-        # Placeholder for gRPC call
-        return True
+        request = nm_pb2.UpdateNoteRequest(note_id=note_id, content=content)
+        response = self.stub.UpdateNote(request)
+        return response.success
 
     def delete_note(self, note_id: str) -> bool:
-        # Placeholder for gRPC call
-        return True
+        request = nm_pb2.DeleteNoteRequest(note_id=note_id)
+        response = self.stub.DeleteNote(request)
+        return response.success
 
     def get_note(self, note_id: str) -> str:
-        # Placeholder for gRPC call
-        return "Note content"
+        request = nm_pb2.GetNoteRequest(note_id=note_id)
+        response = self.stub.GetNote(request)
+        return response.content
 
 class ModelOrchestratorClient:
     def __init__(self):
         self.channel = grpc.insecure_channel('localhost:50053')
+        self.stub = mo_pb2_grpc.ModelOrchestratorStub(self.channel)
 
     def process_language(self, text: str) -> dict:
-        # Placeholder for gRPC call
-        return {"result": "Processed language"}
+        request = mo_pb2.ProcessTextRequest(text=text)
+        response = self.stub.ProcessText(request)
+        return {"result": response.result}
 
     def get_model_prediction(self, model_name: str, data: dict) -> dict:
-        # Placeholder for gRPC call
-        return {"prediction": "Model prediction"}
+        request = mo_pb2.GetPredictionRequest(model_name=model_name, input_data=str(data))
+        response = self.stub.GetPrediction(request)
+        return {"prediction": response.prediction}
 
 # RequestHandler class to handle incoming requests
 class RequestHandler:
-    @staticmethod
-    def handle_user_request(request: dict):
+    def __init__(self, voice_client, note_client, model_client):
+        self.voice_client = voice_client
+        self.note_client = note_client
+        self.model_client = model_client
+
+    def handle_user_request(self, request: dict):
         if 'voice_command' in request:
-            return RequestHandler.process_voice_command(request['voice_command'])
+            return self.process_voice_command(request['voice_command'])
         elif 'note_data' in request:
-            return RequestHandler.manage_note(request['note_data'])
+            return self.manage_note(request['note_data'])
         elif 'task' in request:
-            return RequestHandler.orchestrate_models(request['task'])
+            return self.orchestrate_models(request['task'])
         else:
             return {'error': 'Invalid request'}
 
-    @staticmethod
-    def process_voice_command(command: str):
-        # Placeholder for voice processing logic
-        return {'response': f'Processed voice command: {command}'}
+    def process_voice_command(self, command: str):
+        # Use voice_client to process the command
+        audio = self.voice_client.synthesize_speech(command)
+        recognized_text = self.voice_client.recognize_speech(audio)
+        return {'response': f'Processed voice command: {recognized_text}'}
 
-    @staticmethod
-    def manage_note(note_data: dict):
-        # Placeholder for note management logic
-        return {'response': f'Managed note: {note_data}'}
+    def manage_note(self, note_data: dict):
+        # Use note_client to manage notes
+        if 'action' not in note_data:
+            return {'error': 'Missing action in note_data'}
+        
+        action = note_data['action']
+        if action == 'create':
+            note_id = self.note_client.create_note(note_data.get('content', ''))
+            return {'response': f'Created note with ID: {note_id}'}
+        elif action == 'update':
+            success = self.note_client.update_note(note_data.get('note_id'), note_data.get('content', ''))
+            return {'response': f'Updated note: {success}'}
+        elif action == 'delete':
+            success = self.note_client.delete_note(note_data.get('note_id'))
+            return {'response': f'Deleted note: {success}'}
+        elif action == 'get':
+            content = self.note_client.get_note(note_data.get('note_id'))
+            return {'response': f'Note content: {content}'}
+        else:
+            return {'error': 'Invalid note action'}
 
-    @staticmethod
-    def orchestrate_models(task: str):
-        # Placeholder for model orchestration logic
-        return {'response': f'Orchestrated models for task: {task}'}
+    def orchestrate_models(self, task: str):
+        # Use model_client to orchestrate models
+        processed_result = self.model_client.process_language(task)
+        prediction = self.model_client.get_model_prediction("default_model", processed_result)
+        return {'response': f'Model prediction for task "{task}": {prediction["prediction"]}'}
 
 # CrystalCore class to initialize and run the Flask app
 class CrystalCore:
@@ -92,13 +122,14 @@ class CrystalCore:
         self.voice_client = VoiceProcessorClient()
         self.note_client = NoteManagerClient()
         self.model_client = ModelOrchestratorClient()
+        self.request_handler = RequestHandler(self.voice_client, self.note_client, self.model_client)
         self.initialize_app()
 
     def initialize_app(self):
         @self.flask_app.route('/', methods=['POST'])
         def handle_request():
             data = request.json or {}
-            response = RequestHandler.handle_user_request(data)
+            response = self.request_handler.handle_user_request(data)
             return jsonify(response)
 
     def run_server(self):
