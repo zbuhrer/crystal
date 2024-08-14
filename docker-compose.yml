@@ -1,0 +1,47 @@
+services:
+  crystal-core:
+    build:
+      context: .
+      dockerfile: crystal-core/Dockerfile
+    ports:
+      - "5005:5005"
+    depends_on:
+      - crystal-voice
+      - crystal-note
+      - crystal-model
+    networks:
+      - crystal-network
+
+  crystal-voice:
+    build:
+      context: .
+      dockerfile: crystal-voice/Dockerfile
+    expose:
+      - "50051"
+    networks:
+      - crystal-network
+
+  crystal-note:
+    build:
+      context: .
+      dockerfile: crystal-note/Dockerfile
+    expose:
+      - "50052"
+    networks:
+      - crystal-network
+
+  crystal-model:
+    build:
+      context: .
+      dockerfile: crystal-model/Dockerfile
+    expose:
+      - "50053"
+    networks:
+      - crystal-network
+
+networks:
+  crystal-network:
+    driver: bridge
+
+volumes:
+  shared-storage:

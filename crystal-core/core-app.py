@@ -1,18 +1,29 @@
 from flask import Flask, request, jsonify
 import grpc
 
-# Placeholder for gRPC client classes
+# gRPC protobuffs are imported this way to avoid circular imports I think 
+import voice_processor_pb2 as vp_pb2
+import voice_processor_pb2_grpc as vp_pb2_grpc
+
+
+# gRPC clients
+
 class VoiceProcessorClient:
     def __init__(self):
         self.channel = grpc.insecure_channel('localhost:50051')
+        self.stub = vp_pb2_grpc.VoiceProcessorStub(self.channel)
 
     def recognize_speech(self, audio: bytes) -> str:
-        # Placeholder for gRPC call
-        return "Recognized speech"
+        request = vp_pb2.RecognizeSpeechRequest(audio=audio)
+        response = self.stub.RecognizeSpeech(request)
+        return response.text
 
     def synthesize_speech(self, text: str) -> bytes:
-        # Placeholder for gRPC call
-        return b"Synthesized speech"
+        request = vp_pb2.SynthesizeSpeechRequest(text=text)
+        response = self.stub.SynthesizeSpeech(request)
+        return response.audio
+
+# ---
 
 class NoteManagerClient:
     def __init__(self):
