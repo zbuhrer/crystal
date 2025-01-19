@@ -1,0 +1,15 @@
+database:
+  host: localhost
+  user: admin
+  password: nextdoorpassword
+  name: suitecrm_db
+
+tables:
+  - name: accounts
+    interval: daily
+  - name: tasks
+    interval: frequent
+
+sync_whitelist:
+  - accounts
+  - tasks
